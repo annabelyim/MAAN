@@ -1,0 +1,38 @@
+---
+title: "Literary Text Network"
+author: "Annabel Yim"
+date: "11/26/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(here)
+library(SnowballC)
+```
+
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+keywords_df <- read_csv(here("data", "final.csv")) %>%
+  mutate(word = wordStem(word)) %>%
+  group_by(title, word) %>%
+  summarize(frequency = sum(frequency)) 
+```
+
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+words <- keywords_df %>%
+  select(word, frequency) %>%
+  group_by(word) %>%
+  summarize(frequency = sum(frequency)) %>%
+  arrange(desc(frequency)) %>%
+  head(100) %>%
+  select(word)
+```
+
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+top_100 <- keywords_df %>%
+  inner_join(words) %>%
+  pivot_wider(id_cols = title,
+              names_from = word,
+              values_from = frequency) %>%
+  mutate_all(~replace_na(., 0))
+```

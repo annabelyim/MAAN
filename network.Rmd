@@ -5,34 +5,119 @@ date: "11/26/2021"
 output: html_document
 ---
 
-```{r}
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
 library(tidyverse)
 library(here)
 library(SnowballC)
+library(tm)
+library(stopwords)
+library(igraph)
 ```
 
 ```{r, echo=FALSE, warniing=FALSE, message=FALSE}
-keywords_df <- read_csv(here("data", "final.csv")) %>%
+keywords_df <- read_csv(here("data", "final.csv")) 
+
+# removing stop words and numbers
+keywords <- removeWords(keywords_df$word, stopwords("en", source="smart")) 
+keywords <- removeNumbers(keywords)
+keywords <- read.table(text=keywords, col.names=c('word')) %>% distinct()
+
+# stemming keywords
+keywords_df <- keywords_df %>%
+  right_join(keywords, by = "word") %>%
   mutate(word = wordStem(word)) %>%
   group_by(title, word) %>%
-  summarize(frequency = sum(frequency)) 
+  summarize(frequency = sum(frequency)) %>% 
+  ungroup()
 ```
 
 ```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+# keywords with a frequency greater than 1 
 words <- keywords_df %>%
   select(word, frequency) %>%
   group_by(word) %>%
   summarize(frequency = sum(frequency)) %>%
+  filter(frequency > 1) %>%
   arrange(desc(frequency)) %>%
-  head(100) %>%
   select(word)
 ```
 
 ```{r, echo=FALSE, warniing=FALSE, message=FALSE}
-top_100 <- keywords_df %>%
+words <- keywords_df %>%
   inner_join(words) %>%
   pivot_wider(id_cols = title,
               names_from = word,
               values_from = frequency) %>%
-  mutate_all(~replace_na(., 0))
+  mutate_all(~replace_na(., 0)) %>%
+  ungroup()
 ```
+
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+# make a copy of variables
+words <- cbind(words, setNames(words[colnames(words)], paste0(colnames(words), "_j")))
+```
+
+```{r, echo=FALSE, warniing=FALSE, message=FALSE}
+# create all possible combinations of nodes (written texts)
+combos <- expand.grid(words$title, words$title_j) %>% 
+  rename(title = Var1,
+         title_j = Var2) %>%
+  filter(title != title_j)
+```
+
+```{r}
+# merge in words data with edgelist of all possible combinations 
+words_i <- words %>% 
+  select(! matches('.[_j]'))
+
+words_j <- words %>% 
+  select(matches('.[_j]'))
+
+joined_data <- left_join(combos, words_i, by = "title")
+
+joined_data <- left_join(joined_data, words_j, by = "title_j")
+```
+
+```{r}
+# Filter to only include wanted edges
+edge_list <- joined_data %>%
+  mutate(count = NA)
+
+# loop through each row of joined data 
+for (r in 1: nrow(joined_data)) {
+  count = 0
+  data <- joined_data[r,]
+  data_i <- data %>% select(! matches('.[_j]') & ! matches('title')) %>% unlist()
+  data_j <- data %>% select(matches('.[_j]') & ! matches('title_j')) %>% unlist()
+  for (col in 1:length(data_i)) {
+    # count the number of columns (keywords) where columns i and j are both greater than 0 (had the same keyword) 
+    if (data_i[[col]] == data_j[[col]] & data_i[[col]] > 0 & data_j[[col]] > 0) {
+      count = count + 1
+    }
+  }
+  edge_list$count[[r]] = count
+}
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# convert to network object
+network_obj <- graph_from_data_frame(edge_list, directed=F)
+network_obj <- simplify(network_obj)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# add weights 
+network_weights <- set_edge_attr(network_obj, "weight", value= edge_list$count)
+```
+
+### Plot weighted network object 
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# plot weighted network 
+plot(network_weights, 
+     edge.width=0.005*E(network_weights)$weight,
+     vertex.color="white",
+     vertex.label.color="blue"
+     )
+title(main="Keywords Network Between Written Texts")
+```
+

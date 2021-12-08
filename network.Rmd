@@ -68,10 +68,10 @@ combos <- expand.grid(words$title, words$title_j) %>%
 ```{r}
 # merge in words data with edgelist of all possible combinations 
 words_i <- words %>% 
-  select(! matches('.[_j]'))
+  select(! matches('.[_j]$'))
 
 words_j <- words %>% 
-  select(matches('.[_j]'))
+  select(matches('.[_j]$'))
 
 joined_data <- left_join(combos, words_i, by = "title")
 
@@ -87,11 +87,11 @@ edge_list <- joined_data %>%
 for (r in 1: nrow(joined_data)) {
   count = 0
   data <- joined_data[r,]
-  data_i <- data %>% select(! matches('.[_j]') & ! matches('title')) %>% unlist()
-  data_j <- data %>% select(matches('.[_j]') & ! matches('title_j')) %>% unlist()
+  data_i <- data %>% select(! matches('.[_j]$'), -title) %>% unlist()
+  data_j <- data %>% select(matches('.[_j]$'), -title_j) %>% unlist()
   for (col in 1:length(data_i)) {
     # count the number of columns (keywords) where columns i and j are both greater than 0 (had the same keyword) 
-    if (data_i[[col]] == data_j[[col]] & data_i[[col]] > 0 & data_j[[col]] > 0) {
+    if (data_i[[col]] > 0 & data_j[[col]] > 0) {
       count = count + 1
     }
   }
@@ -100,6 +100,9 @@ for (r in 1: nrow(joined_data)) {
 ```
 
 ```{r, message=FALSE, warning=FALSE, echo=FALSE}
+edge_list <- edge_list %>%
+  select(title, title_j, count)
+
 # convert to network object
 network_obj <- graph_from_data_frame(edge_list, directed=F)
 network_obj <- simplify(network_obj)
@@ -114,10 +117,10 @@ network_weights <- set_edge_attr(network_obj, "weight", value= edge_list$count)
 ```{r, message=FALSE, warning=FALSE, echo=FALSE}
 # plot weighted network 
 plot(network_weights, 
-     edge.width=0.005*E(network_weights)$weight,
+     edge.width=0.001*E(network_weights)$weight,
      vertex.color="white",
      vertex.label.color="blue"
      )
-title(main="Keywords Network Between Written Texts")
+title(main="Network of Written Texts Through Keywords")
 ```
 
